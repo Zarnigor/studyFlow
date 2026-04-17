@@ -1,0 +1,57 @@
+# ===== Python =====
+__pycache__/
+*.py[cod]
+*.pyo
+.Python
+*.egg-info/
+build/
+.eggs/
+*.egg
+.venv/
+venv/
+env/
+
+# ===== Node / Frontend =====
+node_modules/
+dist/
+.cache/
+*.local
+
+# ===== Environment variables =====
+.env
+.env.*
+!.env.example
+
+# ===== IDE =====
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# ===== OS =====
+.DS_Store
+Thumbs.db
+
+# ===== Logs =====
+*.log
+logs/
+
+# ===== Docker =====
+postgres_data/
+
+# ===== SSL / Certs =====
+nginx/certs/
+*.pem
+*.key
+*.crt
+
+# ===== Test artifacts =====
+.coverage
+htmlcov/
+.pytest_cache/
+
+# ===== Alembic =====
+alembic/versions/*.py
+
+# ===== Claude Code =====
+.claude/

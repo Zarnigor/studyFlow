@@ -1,0 +1,114 @@
+# EduCRM — Backend API Spesifikatsiya
+# Node.js (Express) + PostgreSQL
+
+# ─── Authentication ───────────────────────────────────────────
+POST   /api/auth/login          # { phone, password } → { token, user }
+POST   /api/auth/logout
+GET    /api/auth/me             # Token orqali joriy user
+
+# ─── Branches ─────────────────────────────────────────────────
+GET    /api/branches            # Barcha filiallar (super_admin)
+POST   /api/branches            # Yangi filial
+GET    /api/branches/:id
+PUT    /api/branches/:id
+DELETE /api/branches/:id
+
+# ─── Students ─────────────────────────────────────────────────
+GET    /api/students            # ?branch_id=1&status=active&q=ism&page=1&limit=20
+POST   /api/students
+GET    /api/students/:id        # + groups, payments, attendance
+PUT    /api/students/:id
+DELETE /api/students/:id        # Soft delete (status=stopped)
+
+GET    /api/students/:id/payments
+GET    /api/students/:id/attendance
+GET    /api/students/:id/groups
+
+# ─── Groups ───────────────────────────────────────────────────
+GET    /api/groups              # ?branch_id=1&teacher_id=2
+POST   /api/groups
+GET    /api/groups/:id          # + students list
+PUT    /api/groups/:id
+DELETE /api/groups/:id
+
+POST   /api/groups/:id/students         # Guruhga talaba qo'shish
+DELETE /api/groups/:id/students/:sid    # Guruhdan chiqarish
+
+# ─── Payments ─────────────────────────────────────────────────
+GET    /api/payments            # ?branch_id=1&status=debt&month=3&year=2025
+POST   /api/payments            # To'lov qabul qilish
+GET    /api/payments/:id
+PUT    /api/payments/:id        # Status o'zgartirish
+
+# Oylik to'lovlarni avtomatik yaratish (cron)
+POST   /api/payments/generate-monthly   # { branch_id, month, year }
+
+# Hisobotlar
+GET    /api/payments/report/monthly     # ?branch_id=1&year=2025
+GET    /api/payments/report/debtors     # ?branch_id=1
+
+# ─── Attendance ───────────────────────────────────────────────
+GET    /api/lessons             # ?group_id=1&date_from=2025-03-01&date_to=2025-03-31
+POST   /api/lessons             # Dars yaratish
+GET    /api/lessons/:id
+
+POST   /api/lessons/:id/attendance      # Davomat belgilash (bulk)
+# Body: [{ student_id, status: "present"|"absent"|"excused" }]
+
+GET    /api/attendance/report   # ?group_id=1&month=3&year=2025
+
+# ─── Teachers ─────────────────────────────────────────────────
+GET    /api/teachers            # ?branch_id=1
+POST   /api/teachers
+GET    /api/teachers/:id        # + groups, salary history
+PUT    /api/teachers/:id
+
+GET    /api/teachers/:id/salary         # Oylik hisobot
+POST   /api/salary-payments             # Maosh to'lash
+
+# ─── Leads ────────────────────────────────────────────────────
+GET    /api/leads               # ?branch_id=1&stage=new&q=ism
+POST   /api/leads
+GET    /api/leads/:id           # + history
+PUT    /api/leads/:id           # Stage o'zgartirish
+DELETE /api/leads/:id
+
+POST   /api/leads/:id/convert   # Lead → Student (enrolled)
+GET    /api/leads/funnel        # ?branch_id=1 → funnel statistics
+
+# ─── Dashboard ────────────────────────────────────────────────
+GET    /api/dashboard           # ?branch_id=all|1|2|3
+# Returns: { kpi, revenue_trend, student_dist, recent_payments, alerts }
+
+GET    /api/dashboard/revenue   # ?branch_id=1&year=2025
+GET    /api/dashboard/alerts    # ?branch_id=1
+
+# ─── Notifications ────────────────────────────────────────────
+GET    /api/notifications       # Joriy user uchun
+PUT    /api/notifications/:id/read
+POST   /api/notifications/send  # Manual yuborish
+
+# ─── Telegram ─────────────────────────────────────────────────
+POST   /api/telegram/webhook    # Bot webhook
+GET    /api/telegram/stats      # Subscription statistics
+
+# ─── Response format (standart) ──────────────────────────────
+# SUCCESS:
+{
+  "success": true,
+  "data": { ... },
+  "meta": { "page": 1, "limit": 20, "total": 312 }
+}
+
+# ERROR:
+{
+  "success": false,
+  "error": {
+    "code": "STUDENT_NOT_FOUND",
+    "message": "Talaba topilmadi"
+  }
+}
+
+# ─── Auth headers ─────────────────────────────────────────────
+# Authorization: Bearer <jwt_token>
+# X-Branch-ID: 1    (optional, super_admin uchun)

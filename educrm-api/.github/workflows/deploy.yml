@@ -1,0 +1,89 @@
+name: Deploy to Production
+
+on:
+  push:
+    branches:
+      - main
+
+# Only one deployment at a time
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy to studyflow.uz
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up SSH agent
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name: Add server to known hosts
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -H "${{ secrets.SERVER_IP }}" >> ~/.ssh/known_hosts
+
+      - name: Sync files to server
+        run: |
+          rsync -avz --progress \
+            --exclude='.git' \
+            --exclude='venv' \
+            --exclude='__pycache__' \
+            --exclude='*.pyc' \
+            --exclude='.env' \
+            --exclude='backups' \
+            ./ \
+            ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }}:/opt/studyflow/
+
+      - name: Pull latest & rebuild containers
+        run: |
+          ssh ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} << 'EOF'
+            set -euo pipefail
+            cd /opt/studyflow
+
+            echo "→ Rebuilding containers..."
+            docker-compose up -d --build --remove-orphans
+
+            echo "→ Waiting for health checks (60s max)..."
+            timeout 60 bash -c '
+              until docker-compose ps | grep -v "unhealthy" | grep -q "healthy"; do
+                sleep 3
+              done
+            ' || true
+
+            echo "→ Container status:"
+            docker-compose ps
+
+            echo "→ API logs (last 20 lines):"
+            docker-compose logs --tail=20 api
+          EOF
+
+      - name: Verify deployment
+        run: |
+          sleep 10
+          echo "→ Checking https://studyflow.uz/health ..."
+          HTTP_CODE=$(curl -sSL -o /dev/null -w "%{http_code}" \
+            --max-time 20 \
+            --retry 5 \
+            --retry-delay 5 \
+            https://studyflow.uz/health)
+
+          if [[ "$HTTP_CODE" == "200" ]]; then
+            echo "✓ Health check passed (HTTP $HTTP_CODE)"
+          else
+            echo "✗ Health check failed (HTTP $HTTP_CODE)"
+            exit 1
+          fi
+
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "::error::Deployment to studyflow.uz FAILED. Check logs above."
+          # Add Telegram/Slack/email notification here if desired
