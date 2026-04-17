@@ -180,10 +180,10 @@ export default function Groups() {
   }
 
   async function openAddStudentModal() {
+    if (!selected) return;
     setModal("addStudent");
     setAddStuId("");
     setAvailableStudents([]);
-    if (!selected) return;
 
     setLoadingStudents(true);
     try {
@@ -491,11 +491,12 @@ export default function Groups() {
         <div style={{ fontSize:14, fontWeight:500 }}>Guruhga talaba qo'shish</div>
         <div style={{ fontSize:12, color:"var(--color-text-secondary)" }}>{selected?.name}</div>
         <FormField label="TALABANI TANLANG">
-          {!loadingStudents && availableStudents.length === 0 ? (
-            <div style={{ padding:"10px 12px", background:"var(--color-background-secondary)", borderRadius:8, fontSize:12, color:"var(--color-text-secondary)" }}>
-              {isUz ? "Barcha talabalar allaqachon biror guruhda" : "All students are already enrolled in a group"}
+          {!loadingStudents && availableStudents.length === 0 && (
+            <div style={{ padding:"12px", fontSize:12, color:"var(--color-text-secondary)", background:"var(--color-background-secondary)", borderRadius:8, textAlign:"center", marginBottom:8 }}>
+              {isUz ? "Ushbu guruhga qo'shish mumkin bo'lgan talabalar yo'q" : "No students available to add to this group"}
             </div>
-          ) : (
+          )}
+          {(loadingStudents || availableStudents.length > 0) && (
             <StudentSearch
               students={availableStudents}
               value={addStuId}

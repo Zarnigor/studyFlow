@@ -1,6 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useAuth } from "../../auth/AuthContext";
 import { usePermissions } from "../../auth/permissions";
+import { useLang } from "../../i18n/LangContext";
 import { api } from "../../api/client";
 
 const STATUS_COLORS = {
@@ -44,6 +45,8 @@ function Section({ title, children }) {
 export default function StudentDetail({ studentId, onBack }) {
   const { branchId, isSuperAdmin } = useAuth();
   const P = usePermissions();
+  const { lang } = useLang();
+  const isUz = lang !== "en";
 
   const [student,         setStudent]         = useState(null);
   const [payments,        setPayments]        = useState([]);
@@ -60,14 +63,16 @@ export default function StudentDetail({ studentId, onBack }) {
   async function load() {
     setLoading(true);
     try {
-      const [stuRes, payRes, grpRes] = await Promise.all([
+      const [stuRes, payRes] = await Promise.all([
         api.students.get(studentId),
         api.payments.list({ student_id: studentId, limit: 50 }),
-        api.groups.list(isSuperAdmin ? {} : { branch_id: branchId }),
       ]);
 
-      const stu     = stuRes?.data ?? stuRes;
-      const pays    = payRes?.data ?? [];
+      const stu = stuRes?.data ?? stuRes;
+      const pays = payRes?.data ?? [];
+      const studentBranchId = stu?.branch_id ?? branchId;
+
+      const grpRes = await api.groups.list({ branch_id: studentBranchId });
       const allGrps = Array.isArray(grpRes) ? grpRes : grpRes?.data ?? [];
 
       setStudent(stu);
@@ -76,10 +81,13 @@ export default function StudentDetail({ studentId, onBack }) {
 
       const enrolledGroupIds = new Set(
         allGrps
-          .filter(g => (g.student_groups ?? []).some(sg => sg.student_id === studentId && sg.is_active))
+          .filter(g =>
+            Array.isArray(g.student_groups) &&
+            g.student_groups.some(sg => sg.student_id === studentId && sg.is_active)
+          )
           .map(g => g.id)
       );
-      setAvailableGroups(allGrps.filter(g => !enrolledGroupIds.has(g.id)));
+      setAvailableGroups(allGrps.filter(g => g.is_active && !enrolledGroupIds.has(g.id)));
     } catch(e) {
       console.error("Student detail load error:", e);
     } finally {
@@ -89,12 +97,19 @@ export default function StudentDetail({ studentId, onBack }) {
 
   useEffect(() => { load(); }, [studentId]);
 
-  const enrolledGroups = allGroups.filter(g =>
-    (g.student_groups ?? []).some(sg => sg.student_id === studentId && sg.is_active)
+  const enrolledGroups = useMemo(() =>
+    allGroups.filter(g =>
+      Array.isArray(g.student_groups) &&
+      g.student_groups.some(sg => sg.student_id === studentId && sg.is_active)
+    ),
+    [allGroups, studentId]
   );
 
-  const filteredAvailableGroups = availableGroups.filter(g =>
-    !groupSearch || g.name.toLowerCase().includes(groupSearch.toLowerCase())
+  const filteredAvailableGroups = useMemo(() =>
+    availableGroups.filter(g =>
+      !groupSearch || g.name.toLowerCase().includes(groupSearch.toLowerCase())
+    ),
+    [availableGroups, groupSearch]
   );
 
   async function handleAddGroup() {
@@ -104,9 +119,10 @@ export default function StudentDetail({ studentId, onBack }) {
       await api.groups.addStudent(Number(addGroupId), studentId);
       setAddGroupId("");
       setGroupSearch("");
+      setAvailableGroups(prev => prev.filter(g => g.id !== Number(addGroupId)));
       await load();
     } catch(e) {
-      alert(e.message ?? "Xatolik yuz berdi");
+      alert(e.message ?? "An error occurred");
     } finally {
       setAddingGroup(false);
     }
@@ -388,9 +404,9 @@ export default function StudentDetail({ studentId, onBack }) {
                 </>
               )}
 
-              {availableGroups.length === 0 && enrolledGroups.length > 0 && (
+              {!loading && availableGroups.length === 0 && enrolledGroups.length > 0 && (
                 <div style={{ fontSize:11, color:"var(--color-text-secondary)", marginTop:8 }}>
-                  Barcha guruhlarga qo'shilgan
+                  {isUz ? "Barcha mavjud guruhlarga qo'shilgan" : "Added to all available groups"}
                 </div>
               )}
             </Section>

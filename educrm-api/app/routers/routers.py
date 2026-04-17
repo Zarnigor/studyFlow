@@ -381,7 +381,7 @@ async def available_students(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Return students in same branch NOT enrolled in ANY active group."""
+    """Return students in the same branch NOT already enrolled in THIS group."""
     group = await crud.get_group(db, group_id)
     if not group:
         raise HTTPException(404, "Group not found")
@@ -389,10 +389,9 @@ async def available_students(
 
     enrolled_subq = (
         select(StudentGroup.student_id)
-        .join(Group, Group.id == StudentGroup.group_id)
         .where(
+            StudentGroup.group_id == group_id,
             StudentGroup.is_active == True,
-            Group.branch_id == group.branch_id,
         )
     ).scalar_subquery()
 
