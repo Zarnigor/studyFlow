@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import StudentDetail from "./StudentDetail";
 import { useLang } from "../../i18n/LangContext";
 import { useAuth } from "../../auth/AuthContext";
 import { usePermissions } from "../../auth/permissions";
@@ -30,6 +31,7 @@ export default function Students() {
   const [query,    setQuery]    = useState("");
   const [page,     setPage]     = useState(1);
   const [modal,    setModal]    = useState(false);
+  const [selectedStudentId, setSelectedStudentId] = useState(null);
   const [view,     setView]     = useState("table");
   const [form,     setForm]     = useState({ firstName:"", lastName:"", phone:"", parentPhone:"", group:"" });
 
@@ -98,6 +100,15 @@ export default function Students() {
     } catch(e){ alert(e.message); }
   }
 
+  if (selectedStudentId) {
+    return (
+      <StudentDetail
+        studentId={selectedStudentId}
+        onBack={() => setSelectedStudentId(null)}
+      />
+    );
+  }
+
   return (
     <div style={{ flex:1, display:"flex", flexDirection:"column", minWidth:0, position:"relative" }}>
       {p.isLimited && (
@@ -145,7 +156,11 @@ export default function Students() {
                       <div style={{ display:"flex", alignItems:"center", gap:8 }}>
                         <Avatar av={initials(st.full_name)} palette={paletteFor(st.id)}/>
                         <div>
-                          <div style={{ fontWeight:500, fontSize:12 }}>{st.full_name}</div>
+                          <div
+                            style={{ fontWeight:500, fontSize:12, color:"#1D9E75", cursor:"pointer", textDecoration:"underline", textDecorationStyle:"dotted" }}
+                            onClick={() => setSelectedStudentId(st.id)}>
+                            {st.full_name}
+                          </div>
                           <div style={{ fontSize:10, color:"var(--color-text-secondary)" }}>{st.phone}</div>
                         </div>
                       </div>
@@ -163,11 +178,13 @@ export default function Students() {
             <div className="mobile-only" style={{ display:"flex", flexDirection:"column", gap:8 }}>
               {students.length === 0 && <EmptyState message={s.noData}/>}
               {students.map(st => (
-                <div key={st.id} style={{
-                  background:"var(--color-background-primary)",
-                  border:"0.5px solid var(--color-border-tertiary)",
-                  borderRadius:10, padding:"12px 14px",
-                }}>
+                <div key={st.id}
+                  onClick={() => setSelectedStudentId(st.id)}
+                  style={{
+                    background:"var(--color-background-primary)",
+                    border:"0.5px solid var(--color-border-tertiary)",
+                    borderRadius:10, padding:"12px 14px", cursor:"pointer",
+                  }}>
                   <div style={{ display:"flex", alignItems:"center", gap:9, marginBottom:6 }}>
                     <div style={{ width:36, height:36, borderRadius:"50%", background:paletteFor(st.id).bg, color:paletteFor(st.id).tc, display:"flex", alignItems:"center", justifyContent:"center", fontSize:12, fontWeight:500, flexShrink:0 }}>
                       {initials(st.full_name)}
