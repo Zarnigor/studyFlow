@@ -3,7 +3,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional
 from app.db.session import get_db
-from app.db.models import User, UserRole, PaymentStatus, LeadStage, StudentStatus, StudentGroup
+from app.db.models import User, UserRole, PaymentStatus, LeadStage, StudentStatus, StudentGroup, Group, Student
 from app.core.security import (
     get_current_user, require_admin, require_staff,
     require_super_admin, get_branch_filter,
@@ -374,6 +374,51 @@ async def remove_student(
     enforce_branch(current_user, g.branch_id)
     await crud.remove_student_from_group(db, student_id, group_id)
     return OKResponse(message="Talaba guruhdan chiqarildi")
+
+@group_router.get("/{group_id}/available-students")
+async def available_students(
+    group_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Return students in same branch NOT enrolled in ANY active group."""
+    group = await crud.get_group(db, group_id)
+    if not group:
+        raise HTTPException(404, "Group not found")
+    enforce_branch(current_user, group.branch_id)
+
+    enrolled_subq = (
+        select(StudentGroup.student_id)
+        .join(Group, Group.id == StudentGroup.group_id)
+        .where(
+            StudentGroup.is_active == True,
+            Group.branch_id == group.branch_id,
+        )
+    ).scalar_subquery()
+
+    result = await db.execute(
+        select(Student)
+        .where(
+            Student.branch_id == group.branch_id,
+            Student.status != StudentStatus.stopped,
+            Student.id.not_in(enrolled_subq),
+        )
+        .order_by(Student.full_name)
+    )
+    students = result.scalars().all()
+
+    return {
+        "success": True,
+        "data": [
+            {
+                "id":        s.id,
+                "full_name": s.full_name,
+                "phone":     s.phone,
+                "status":    s.status.value if hasattr(s.status, "value") else s.status,
+            }
+            for s in students
+        ],
+    }
 
 
 # ════════════════════════════════════════════════════════════════

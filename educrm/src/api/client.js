@@ -95,9 +95,10 @@ export const api = {
     get:           (id)           => get(`/groups/${id}`),
     create:        (d)            => post("/groups", d),
     update:        (id, d)        => put(`/groups/${id}`, d),
-    addStudent:     (gid, sid)     => post(`/groups/${gid}/students`, { student_id: sid }),
-    removeStudent:  (gid, sid)    => del(`/groups/${gid}/students/${sid}`),
-    assignTeacher:  (gid, tid)    => put(`/groups/${gid}/teacher`, { teacher_id: tid }),
+    addStudent:        (gid, sid) => post(`/groups/${gid}/students`, { student_id: sid }),
+    removeStudent:     (gid, sid) => del(`/groups/${gid}/students/${sid}`),
+    assignTeacher:     (gid, tid) => put(`/groups/${gid}/teacher`, { teacher_id: tid }),
+    availableStudents: (gid)      => get(`/groups/${gid}/available-students`),
   },
   payments: {
     list:            (p = {})     => get("/payments", p),

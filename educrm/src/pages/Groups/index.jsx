@@ -178,42 +178,21 @@ export default function Groups() {
     }));
   }
 
-  async function loadAvailableStudents() {
-    try {
-      const groupsRes = await api.groups.list(
-        isSuperAdmin ? {} : { branch_id: branchId }
-      );
-      const allGroups = Array.isArray(groupsRes) ? groupsRes : groupsRes?.data ?? [];
-
-      const enrolledAnywhere = new Set();
-      allGroups.forEach(g => {
-        (g.student_groups ?? []).forEach(sg => {
-          if (sg.is_active) enrolledAnywhere.add(sg.student_id);
-        });
-      });
-
-      // Also include current group detail (more accurate than list payload)
-      (groupDetail?.student_groups ?? []).forEach(sg => {
-        if (sg.is_active) enrolledAnywhere.add(sg.student_id);
-      });
-
-      const studRes = await api.students.list(
-        isSuperAdmin ? { limit: 500 } : { branch_id: branchId, limit: 500 }
-      );
-      const allStuds = studRes?.data ?? [];
-      return allStuds.filter(s => !enrolledAnywhere.has(s.id));
-    } catch (e) {
-      console.error("Failed to load available students:", e);
-      return [];
-    }
-  }
-
   async function openAddStudentModal() {
     setModal("addStudent");
+    setAddStuId("");
+    setAvailableStudents([]);
+    if (!selected) return;
+
     setLoadingStudents(true);
-    const available = await loadAvailableStudents();
-    setAvailableStudents(available);
-    setLoadingStudents(false);
+    try {
+      const res = await api.groups.availableStudents(selected.id);
+      setAvailableStudents(res?.data ?? []);
+    } catch(e) {
+      console.error("Available students error:", e);
+    } finally {
+      setLoadingStudents(false);
+    }
   }
 
   // ── Render ─────────────────────────────────────────────────
@@ -511,20 +490,23 @@ export default function Groups() {
         <div style={{ fontSize:14, fontWeight:500 }}>Guruhga talaba qo'shish</div>
         <div style={{ fontSize:12, color:"var(--color-text-secondary)" }}>{selected?.name}</div>
         <FormField label="TALABANI TANLANG">
-          <Select value={addStuId} onChange={setAddStuId}>
-            <option value="">
-              {loadingStudents ? "Yuklanmoqda..." : "Tanlang..."}
-            </option>
-            {!loadingStudents && availableStudents.map(s => (
-              <option key={s.id} value={s.id}>{s.full_name} — {s.phone}</option>
-            ))}
-          </Select>
+          {loadingStudents ? (
+            <div style={{ fontSize:12, color:"var(--color-text-secondary)", padding:"8px 0" }}>
+              {isUz ? "Yuklanmoqda..." : "Loading..."}
+            </div>
+          ) : availableStudents.length === 0 ? (
+            <div style={{ padding:"10px 12px", background:"var(--color-background-secondary)", borderRadius:8, fontSize:12, color:"var(--color-text-secondary)" }}>
+              {isUz ? "Barcha talabalar allaqachon biror guruhda" : "All students are already enrolled in a group"}
+            </div>
+          ) : (
+            <Select value={addStuId} onChange={setAddStuId}>
+              <option value="">{isUz ? "Talabani tanlang..." : "Select student..."}</option>
+              {availableStudents.map(s => (
+                <option key={s.id} value={s.id}>{s.full_name} — {s.phone}</option>
+              ))}
+            </Select>
+          )}
         </FormField>
-        {!loadingStudents && availableStudents.length === 0 && (
-          <div style={{ fontSize:12, color:"var(--color-text-secondary)", background:"var(--color-background-secondary)", borderRadius:8, padding:"8px 12px" }}>
-            Barcha talabalar allaqachon guruhlarda
-          </div>
-        )}
         <ModalButtons>
           <Button variant="ghost" onClick={()=>setModal(null)}>Bekor qilish</Button>
           <Button onClick={handleAddStudent} style={{ opacity:addingStu?.6:1 }}>

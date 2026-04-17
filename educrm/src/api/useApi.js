@@ -1,46 +1,64 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 
 export function useApi(fetcher, deps = []) {
   const [data,    setData]    = useState(null);
   const [loading, setLoading] = useState(true);
   const [error,   setError]   = useState(null);
-  const mounted = useRef(true);
-  const depsKey = JSON.stringify(deps);
+  const abortRef = useRef(null);
+
+  const run = useCallback(() => {
+    // Cancel previous in-flight request
+    if (abortRef.current) abortRef.current.cancelled = true;
+    const token = { cancelled: false };
+    abortRef.current = token;
+
+    setLoading(true);
+    setError(null);
+
+    fetcher()
+      .then(res => {
+        if (!token.cancelled) {
+          setData(res);
+          setLoading(false);
+        }
+      })
+      .catch(e => {
+        if (!token.cancelled) {
+          console.error("useApi error:", e.message);
+          setError(e.message ?? "Error");
+          setLoading(false);
+        }
+      });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [JSON.stringify(deps)]);
 
   useEffect(() => {
-    mounted.current = true;
-    setLoading(true);
-    setError(null);
-    fetcher()
-      .then(res => { if (mounted.current) setData(res); })
-      .catch(e  => { if (mounted.current) setError(e.message ?? "Xatolik"); })
-      .finally(() => { if (mounted.current) setLoading(false); });
-    return () => { mounted.current = false; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [depsKey]);
+    run();
+    return () => {
+      if (abortRef.current) abortRef.current.cancelled = true;
+    };
+  }, [run]);
 
-  const refetch = () => {
-    mounted.current = true;
-    setLoading(true);
-    setError(null);
-    fetcher()
-      .then(res => { if (mounted.current) setData(res); })
-      .catch(e  => { if (mounted.current) setError(e.message ?? "Xatolik"); })
-      .finally(() => { if (mounted.current) setLoading(false); });
-  };
-
-  return { data, loading, error, refetch };
+  return { data, loading, error, refetch: run };
 }
 
 export function useMutation(fn) {
   const [loading, setLoading] = useState(false);
   const [error,   setError]   = useState(null);
+
   const mutate = async (...args) => {
-    setLoading(true); setError(null);
-    try { return await fn(...args); }
-    catch (e) { setError(e.message ?? "Xatolik"); throw e; }
-    finally { setLoading(false); }
+    setLoading(true);
+    setError(null);
+    try {
+      return await fn(...args);
+    } catch(e) {
+      setError(e.message ?? "Error");
+      throw e;
+    } finally {
+      setLoading(false);
+    }
   };
+
   return { mutate, loading, error, clearError: () => setError(null) };
 }
 
