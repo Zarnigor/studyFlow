@@ -37,8 +37,10 @@ export default function Payments() {
     student_id:"", amount:"", method:"cash",
     payment_date: new Date().toISOString().slice(0,10),
   });
-  const [stuSearch,  setStuSearch]  = useState("");
-  const [stuPicked,  setStuPicked]  = useState(null);
+  const [stuSearch,        setStuSearch]        = useState("");
+  const [stuPicked,        setStuPicked]        = useState(null);
+  const [modalStudents,    setModalStudents]    = useState([]);
+  const [loadingModalStuds,setLoadingModalStuds]= useState(false);
 
   const { data, loading, refetch } = useApi(
     () => api.payments.list({
@@ -62,9 +64,23 @@ export default function Payments() {
   const { mutate:updatePay } = useMutation((id,d)=>api.payments.update(id,d));
   const { mutate:createPay } = useMutation(d=>api.payments.create(d));
   const { data:debtData }    = useApi(()=>api.payments.debtors({branch_id:isSuperAdmin?undefined:branchId}),[]);
-  const { data:stuData }     = useApi(()=>api.students.list({branch_id:isSuperAdmin?undefined:branchId,limit:100}),[branchId]);
-  const allStudents = stuData?.data ?? [];
   const unpaidOptions = debtData?.data ?? [];
+
+  async function loadModalStudents() {
+    setLoadingModalStuds(true);
+    try {
+      const res = await api.students.list({
+        branch_id: isSuperAdmin ? undefined : branchId,
+        status:    "active",
+        limit:     200,
+      });
+      setModalStudents(res?.data ?? []);
+    } catch(e) {
+      console.error("Modal students error:", e);
+    } finally {
+      setLoadingModalStuds(false);
+    }
+  }
 
   async function markPaid(id){ await updatePay(id,{status:"paid"}); refetch(); }
 
@@ -77,7 +93,14 @@ export default function Payments() {
   }
 
   async function handleCreatePayment() {
-    if (!newForm.student_id || !newForm.amount) return;
+    if (!newForm.student_id) {
+      alert(isUz ? "Talabani tanlang" : "Select a student");
+      return;
+    }
+    if (!newForm.amount) {
+      alert(isUz ? "Summani kiriting" : "Enter amount");
+      return;
+    }
     try {
       const pd = new Date(newForm.payment_date || new Date().toISOString().slice(0,10));
       await createPay({
@@ -86,14 +109,14 @@ export default function Payments() {
         amount:       Number(newForm.amount),
         discount:     0,
         method:       newForm.method,
-        status:       "pending",
+        status:       "paid",
         period_month: pd.getMonth() + 1,
         period_year:  pd.getFullYear(),
         payment_date: newForm.payment_date || null,
       });
       setNewModal(false);
       setNewForm({ student_id:"", amount:"", method:"cash", payment_date: new Date().toISOString().slice(0,10) });
-      setStuSearch(""); setStuPicked(null);
+      setStuSearch(""); setStuPicked(null); setModalStudents([]);
       refetch();
     } catch(e) { alert(e.message); }
   }
@@ -106,7 +129,7 @@ export default function Payments() {
         {perm.canCreate && (
           <div style={{ marginLeft:"auto", display:"flex", gap:6 }}>
             <Button variant="ghost" onClick={()=>setDebtModal(true)}>Qarzni to'lash</Button>
-            <Button onClick={()=>setNewModal(true)}>{p.add}</Button>
+            <Button onClick={()=>{ setNewModal(true); loadModalStudents(); }}>{p.add}</Button>
           </div>
         )}
       </div>
@@ -197,18 +220,19 @@ export default function Payments() {
 
       {/* Modal 2: Yangi to'lov yaratish */}
       {perm.canCreate && (
-        <Modal open={newModal} onClose={()=>{ setNewModal(false); setStuSearch(""); setStuPicked(null); }}>
+        <Modal open={newModal} onClose={()=>{ setNewModal(false); setStuSearch(""); setStuPicked(null); setModalStudents([]); }}>
           <div style={{ fontSize:14, fontWeight:500 }}>{p.form.title}</div>
           <FormField label="Talaba">
             <div style={{ position:"relative" }}>
               <input
                 value={stuPicked ? stuPicked.full_name : stuSearch}
                 onChange={e=>{ setStuSearch(e.target.value); setStuPicked(null); setNewForm(prev=>({...prev,student_id:""})); }}
-                placeholder="Ism yoki telefon bilan qidiring..."
-                style={{ border:"0.5px solid var(--color-border-secondary)", borderRadius:8, padding:"7px 10px", fontSize:12, width:"100%", fontFamily:"var(--font-sans)", outline:"none", background:"var(--color-background-primary)", color:"var(--color-text-primary)", boxSizing:"border-box" }}/>
-              {stuSearch && !stuPicked && (() => {
+                placeholder={loadingModalStuds ? (isUz ? "Yuklanmoqda..." : "Loading...") : (isUz ? "Ism yoki telefon bilan qidiring..." : "Search by name or phone...")}
+                disabled={loadingModalStuds}
+                style={{ border:"0.5px solid var(--color-border-secondary)", borderRadius:8, padding:"7px 10px", fontSize:12, width:"100%", fontFamily:"var(--font-sans)", outline:"none", background:"var(--color-background-primary)", color:"var(--color-text-primary)", boxSizing:"border-box", opacity: loadingModalStuds ? 0.6 : 1 }}/>
+              {stuSearch && !stuPicked && !loadingModalStuds && (() => {
                 const q = stuSearch.toLowerCase();
-                const filtered = allStudents.filter(s =>
+                const filtered = modalStudents.filter(s =>
                   s.full_name?.toLowerCase().includes(q) || s.phone?.includes(stuSearch)
                 ).slice(0, 8);
                 return filtered.length > 0 ? (
