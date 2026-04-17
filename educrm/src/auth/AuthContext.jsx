@@ -11,8 +11,8 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     if (!tokens.access) { setLoading(false); return; }
     api.auth.me()
-      .then(u => setUser(u))
-      .catch(() => tokens.clear())
+      .then(u => { if (u) setUser(u); })
+      .catch(err => { if (err.status === 401) tokens.clear(); })
       .finally(() => setLoading(false));
   }, []);
 
