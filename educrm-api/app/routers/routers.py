@@ -217,6 +217,20 @@ async def update_teacher(
     return teacher_to_dict(t)
 
 
+@teacher_router.delete("/{teacher_id}", response_model=OKResponse)
+async def delete_teacher(
+    teacher_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    t = await crud.get_teacher(db, teacher_id)
+    if not t:
+        raise HTTPException(404, "O'qituvchi topilmadi")
+    enforce_branch(current_user, t.branch_id)
+    await crud.update_teacher(db, teacher_id, {"is_active": False})
+    return OKResponse(message="O'qituvchi o'chirildi")
+
+
 # ════════════════════════════════════════════════════════════════
 #  GROUPS
 # ════════════════════════════════════════════════════════════════
@@ -327,8 +341,7 @@ async def assign_teacher_to_group(
     if t.branch_id != g.branch_id:
         raise HTTPException(400, "O'qituvchi va guruh bir filialda bo'lishi kerak")
 
-    g.teacher_id = body.teacher_id
-    await db.flush()
+    await crud.update_group(db, group_id, {"teacher_id": body.teacher_id})
     g = await crud.get_group(db, group_id)
     return {"success": True, "data": group_to_dict(g)}
 
@@ -571,6 +584,12 @@ async def create_payment(body: PaymentIn, db: AsyncSession = Depends(get_db), cu
     data["branch_id"] = safe_branch_id(current_user, data.get("branch_id"))
     return await crud.create_payment(db, data, current_user.id)
 
+@payment_router.get("/report/debtors")
+async def debtors_report(branch_id: Optional[int] = None, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    bid = get_branch_filter(current_user, branch_id)
+    items, total = await crud.get_payments(db, bid, None, PaymentStatus.debt, None, None, 1, 200)
+    return {"success": True, "data": [PaymentOut.model_validate(p) for p in items], "total": total}
+
 @payment_router.get("/{payment_id}", response_model=PaymentOut)
 async def get_payment(payment_id: int, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
     obj = await crud.get_payment(db, payment_id)
@@ -591,12 +610,6 @@ async def generate_monthly(body: PaymentBulkGenerate, db: AsyncSession = Depends
     branch_id = safe_branch_id(current_user, body.branch_id)
     count = await crud.bulk_generate_payments(db, branch_id, body.period_month, body.period_year, current_user.id)
     return OKResponse(message=f"{count} ta to'lov yaratildi")
-
-@payment_router.get("/report/debtors")
-async def debtors_report(branch_id: Optional[int] = None, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
-    bid = get_branch_filter(current_user, branch_id)
-    items, total = await crud.get_payments(db, bid, None, PaymentStatus.debt, None, None, 1, 200)
-    return {"success": True, "data": [PaymentOut.model_validate(p) for p in items], "total": total}
 
 
 # ════════════════════════════════════════════════════════════════

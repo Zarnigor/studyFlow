@@ -226,6 +226,81 @@ async def create_lesson(
     return {"success": True, "data": lesson_to_dict(result)}
 
 
+# ── GET /lessons/report/attendance ───────────────────────────────
+@lesson_router.get("/report/attendance")
+async def attendance_report(
+    group_id: int = Query(...),
+    month:    int = Query(..., ge=1, le=12),
+    year:     int = Query(..., ge=2020),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    # O'qituvchi faqat o'z guruhining hisobotini ko'ra oladi
+    if current_user.role == UserRole.teacher:
+        allowed = await get_teacher_group_ids(db, current_user)
+        if group_id not in (allowed or []):
+            raise HTTPException(403, "Bu guruh hisobotiga ruxsatingiz yo'q")
+
+    data = await crud.get_attendance_report(db, group_id, month, year)
+    return {"success": True, "data": data}
+
+
+# ── GET /lessons/stats/by-group ──────────────────────────────────
+@lesson_router.get("/stats/by-group")
+async def lessons_stats(
+    group_id:   Optional[int] = None,
+    branch_id:  Optional[int] = None,
+    month:      Optional[int] = None,
+    year:       Optional[int] = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    # O'qituvchi faqat o'z guruhlarini
+    allowed_ids = await get_teacher_group_ids(db, current_user)
+
+    q = (
+        select(
+            Group.id.label("group_id"),
+            Group.name.label("group_name"),
+            func.count(Lesson.id).label("total_lessons"),
+            func.count(Attendance.id).label("total_att"),
+            func.count(Attendance.id).filter(
+                Attendance.status == AttStatus.present
+            ).label("present_count"),
+        )
+        .join(Lesson,     Lesson.group_id     == Group.id)
+        .join(Attendance, Attendance.lesson_id == Lesson.id)
+        .group_by(Group.id, Group.name)
+    )
+
+    if allowed_ids is not None:
+        if not allowed_ids:
+            return {"success": True, "data": []}
+        q = q.where(Group.id.in_(allowed_ids))
+    else:
+        if group_id:  q = q.where(Group.id == group_id)
+        if branch_id: q = q.where(Group.branch_id == branch_id)
+
+    if month: q = q.where(func.extract("month", Lesson.lesson_date) == month)
+    if year:  q = q.where(func.extract("year",  Lesson.lesson_date) == year)
+
+    rows = (await db.execute(q)).all()
+    return {
+        "success": True,
+        "data": [
+            {
+                "group_id":      r.group_id,
+                "group_name":    r.group_name,
+                "total_lessons": r.total_lessons,
+                "total_students":r.total_att,
+                "present":       r.present_count,
+                "pct": round(r.present_count / r.total_att * 100, 1) if r.total_att else 0,
+            }
+            for r in rows
+        ],
+    }
+
+
 # ── GET /lessons/:id ────────────────────────────────────────────
 @lesson_router.get("/{lesson_id}")
 async def get_lesson(
@@ -338,78 +413,3 @@ async def mark_attendance(
              by=current_user.id, role=current_user.role)
 
     return {"success": True, "data": [att_to_dict(a) for a in result]}
-
-
-# ── GET /lessons/report/attendance ───────────────────────────────
-@lesson_router.get("/report/attendance")
-async def attendance_report(
-    group_id: int = Query(...),
-    month:    int = Query(..., ge=1, le=12),
-    year:     int = Query(..., ge=2020),
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    # O'qituvchi faqat o'z guruhining hisobotini ko'ra oladi
-    if current_user.role == UserRole.teacher:
-        allowed = await get_teacher_group_ids(db, current_user)
-        if group_id not in (allowed or []):
-            raise HTTPException(403, "Bu guruh hisobotiga ruxsatingiz yo'q")
-
-    data = await crud.get_attendance_report(db, group_id, month, year)
-    return {"success": True, "data": data}
-
-
-# ── GET /lessons/stats/by-group ──────────────────────────────────
-@lesson_router.get("/stats/by-group")
-async def lessons_stats(
-    group_id:   Optional[int] = None,
-    branch_id:  Optional[int] = None,
-    month:      Optional[int] = None,
-    year:       Optional[int] = None,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    # O'qituvchi faqat o'z guruhlarini
-    allowed_ids = await get_teacher_group_ids(db, current_user)
-
-    q = (
-        select(
-            Group.id.label("group_id"),
-            Group.name.label("group_name"),
-            func.count(Lesson.id).label("total_lessons"),
-            func.count(Attendance.id).label("total_att"),
-            func.count(Attendance.id).filter(
-                Attendance.status == AttStatus.present
-            ).label("present_count"),
-        )
-        .join(Lesson,     Lesson.group_id     == Group.id)
-        .join(Attendance, Attendance.lesson_id == Lesson.id)
-        .group_by(Group.id, Group.name)
-    )
-
-    if allowed_ids is not None:
-        if not allowed_ids:
-            return {"success": True, "data": []}
-        q = q.where(Group.id.in_(allowed_ids))
-    else:
-        if group_id:  q = q.where(Group.id == group_id)
-        if branch_id: q = q.where(Group.branch_id == branch_id)
-
-    if month: q = q.where(func.extract("month", Lesson.lesson_date) == month)
-    if year:  q = q.where(func.extract("year",  Lesson.lesson_date) == year)
-
-    rows = (await db.execute(q)).all()
-    return {
-        "success": True,
-        "data": [
-            {
-                "group_id":      r.group_id,
-                "group_name":    r.group_name,
-                "total_lessons": r.total_lessons,
-                "total_students":r.total_att,
-                "present":       r.present_count,
-                "pct": round(r.present_count / r.total_att * 100, 1) if r.total_att else 0,
-            }
-            for r in rows
-        ],
-    }

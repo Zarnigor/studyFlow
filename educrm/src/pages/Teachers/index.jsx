@@ -52,16 +52,19 @@ export default function Teachers() {
         salary_value: parseFloat(form.salaryValue) || 0,
       });
 
-      // If createLogin is checked, create user account for teacher
+      // If createLogin is checked, create user account and link it to the teacher
       if (form.createLogin && form.phone && form.password) {
         try {
-          await api.users.create({
+          const newUser = await api.users.create({
             full_name:  `${firstName} ${lastName}`,
             phone:      form.phone,
             password:   form.password,
             role:       "teacher",
             branch_id:  branchId,
           });
+          if (newUser?.id) {
+            await api.teachers.update(teacher.id, { user_id: newUser.id });
+          }
         } catch(userErr) {
           alert(
             lang==="en"

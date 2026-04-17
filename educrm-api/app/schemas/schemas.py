@@ -133,6 +133,7 @@ class TeacherUpdate(BaseModel):
     salary_value: Optional[Decimal]   = None
     bio:          Optional[str]       = None
     is_active:    Optional[bool]      = None
+    user_id:      Optional[int]       = None
 
 class GroupBrief(BaseModel):
     id:   int

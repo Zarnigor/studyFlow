@@ -83,7 +83,9 @@ async def create_teacher(db: AsyncSession, data: dict) -> Teacher:
     return obj
 
 async def get_teachers(db: AsyncSession, branch_id: Optional[int] = None, active_only: bool = True) -> Sequence[Teacher]:
-    q = select(Teacher).options(selectinload(Teacher.groups))
+    q = select(Teacher).options(
+        selectinload(Teacher.groups).selectinload(Group.student_groups)
+    )
     if branch_id:   q = q.where(Teacher.branch_id == branch_id)
     if active_only: q = q.where(Teacher.is_active == True)
     return (await db.execute(q.order_by(Teacher.full_name))).scalars().all()
@@ -91,7 +93,7 @@ async def get_teachers(db: AsyncSession, branch_id: Optional[int] = None, active
 async def get_teacher(db: AsyncSession, teacher_id: int) -> Optional[Teacher]:
     return (await db.execute(
         select(Teacher).where(Teacher.id == teacher_id)
-        .options(selectinload(Teacher.groups))
+        .options(selectinload(Teacher.groups).selectinload(Group.student_groups))
     )).scalar_one_or_none()
 
 async def update_teacher(db: AsyncSession, teacher_id: int, data: dict) -> Optional[Teacher]:
