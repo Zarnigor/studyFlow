@@ -44,12 +44,14 @@ export default function Groups() {
   const P = usePermissions();
   const perm = P.groups;
 
-  const [view,            setView]            = useState("cards"); // "cards" | "detail"
-  const [selected,        setSelected]        = useState(null);
-  const [modal,           setModal]           = useState(null);    // null | "create" | "edit" | "addStudent"
-  const [form,            setForm]            = useState({});
-  const [addStuId,        setAddStuId]        = useState("");
-  const [assignTeacherId, setAssignTeacherId] = useState("");
+  const [view,              setView]              = useState("cards"); // "cards" | "detail"
+  const [selected,          setSelected]          = useState(null);
+  const [modal,             setModal]             = useState(null);    // null | "create" | "edit" | "addStudent"
+  const [form,              setForm]              = useState({});
+  const [addStuId,          setAddStuId]          = useState("");
+  const [assignTeacherId,   setAssignTeacherId]   = useState("");
+  const [availableStudents, setAvailableStudents] = useState([]);
+  const [loadingStudents,   setLoadingStudents]   = useState(false);
 
   // ── Fetch groups ──────────────────────────────────────────
   const { data: groupsRaw, loading: gLoading, refetch: refetchGroups } = useApi(
@@ -77,11 +79,7 @@ export default function Groups() {
   const groupStudents = groupDetail?.student_groups ?? [];
 
   // ── Fetch all students (for add-student dropdown) ─────────
-  const { data: allStudentsRaw } = useApi(
-    () => api.students.list({ branch_id: isSuperAdmin ? undefined : branchId, limit: 100 }),
-    [branchId]
-  );
-  const allStudents = allStudentsRaw?.data ?? [];
+  // (kept for potential other uses; modal now uses availableStudents state)
 
   // ── Mutations ──────────────────────────────────────────────
   const { mutate: createGroup,   loading: creating }   = useMutation(api.groups.create);
@@ -180,9 +178,43 @@ export default function Groups() {
     }));
   }
 
-  // Students not yet in this group
-  const enrolledIds = new Set(groupStudents.filter(sg=>sg.is_active).map(sg=>sg.student_id));
-  const availableStudents = allStudents.filter(s => !enrolledIds.has(s.id));
+  async function loadAvailableStudents() {
+    try {
+      const groupsRes = await api.groups.list(
+        isSuperAdmin ? {} : { branch_id: branchId }
+      );
+      const allGroups = Array.isArray(groupsRes) ? groupsRes : groupsRes?.data ?? [];
+
+      const enrolledAnywhere = new Set();
+      allGroups.forEach(g => {
+        (g.student_groups ?? []).forEach(sg => {
+          if (sg.is_active) enrolledAnywhere.add(sg.student_id);
+        });
+      });
+
+      // Also include current group detail (more accurate than list payload)
+      (groupDetail?.student_groups ?? []).forEach(sg => {
+        if (sg.is_active) enrolledAnywhere.add(sg.student_id);
+      });
+
+      const studRes = await api.students.list(
+        isSuperAdmin ? { limit: 500 } : { branch_id: branchId, limit: 500 }
+      );
+      const allStuds = studRes?.data ?? [];
+      return allStuds.filter(s => !enrolledAnywhere.has(s.id));
+    } catch (e) {
+      console.error("Failed to load available students:", e);
+      return [];
+    }
+  }
+
+  async function openAddStudentModal() {
+    setModal("addStudent");
+    setLoadingStudents(true);
+    const available = await loadAvailableStudents();
+    setAvailableStudents(available);
+    setLoadingStudents(false);
+  }
 
   // ── Render ─────────────────────────────────────────────────
   return (
@@ -200,7 +232,7 @@ export default function Groups() {
             <span style={{ fontSize:14, fontWeight:500 }}>{selected.name}</span>
             <div style={{ marginLeft:"auto", display:"flex", gap:8 }}>
               <Button variant="secondary" onClick={()=>openEdit(selected)}>{isUz?"Tahrirlash":"Edit"}</Button>
-              {perm.canAddStudent && <Button onClick={()=>setModal("addStudent")}>{isUz?"+ Talaba qo'shish":"+ Add student"}</Button>}
+              {perm.canAddStudent && <Button onClick={()=>openAddStudentModal()}>{isUz?"+ Talaba qo'shish":"+ Add student"}</Button>}
             </div>
           </>
         ) : (
@@ -312,7 +344,7 @@ export default function Groups() {
                   {groupStudents.filter(sg=>sg.is_active).length === 0 ? (
                     <div style={{ display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", height:100, gap:8, color:"var(--color-text-secondary)", fontSize:12 }}>
                       Guruhda hali talaba yo'q
-                      {perm.canAddStudent && <Button onClick={()=>setModal("addStudent")}>+ Talaba qo'shish</Button>}
+                      {perm.canAddStudent && <Button onClick={()=>openAddStudentModal()}>+ Talaba qo'shish</Button>}
                     </div>
                   ) : (
                     <table style={{ width:"100%", borderCollapse:"collapse" }}>
@@ -480,15 +512,17 @@ export default function Groups() {
         <div style={{ fontSize:12, color:"var(--color-text-secondary)" }}>{selected?.name}</div>
         <FormField label="TALABANI TANLANG">
           <Select value={addStuId} onChange={setAddStuId}>
-            <option value="">Tanlang...</option>
-            {availableStudents.map(s => (
+            <option value="">
+              {loadingStudents ? "Yuklanmoqda..." : "Tanlang..."}
+            </option>
+            {!loadingStudents && availableStudents.map(s => (
               <option key={s.id} value={s.id}>{s.full_name} — {s.phone}</option>
             ))}
           </Select>
         </FormField>
-        {availableStudents.length === 0 && (
+        {!loadingStudents && availableStudents.length === 0 && (
           <div style={{ fontSize:12, color:"var(--color-text-secondary)", background:"var(--color-background-secondary)", borderRadius:8, padding:"8px 12px" }}>
-            Barcha talabalar allaqachon bu guruhda yoki talaba yo'q.
+            Barcha talabalar allaqachon guruhlarda
           </div>
         )}
         <ModalButtons>
