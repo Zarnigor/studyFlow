@@ -1,4 +1,5 @@
 import { useState } from "react";
+import StudentSearch from "../../components/StudentSearch";
 import { useLang } from "../../i18n/LangContext";
 import { useAuth } from "../../auth/AuthContext";
 import { usePermissions } from "../../auth/permissions";
@@ -37,8 +38,6 @@ export default function Payments() {
     student_id:"", amount:"", method:"cash",
     payment_date: new Date().toISOString().slice(0,10),
   });
-  const [stuSearch,        setStuSearch]        = useState("");
-  const [stuPicked,        setStuPicked]        = useState(null);
   const [modalStudents,    setModalStudents]    = useState([]);
   const [loadingModalStuds,setLoadingModalStuds]= useState(false);
 
@@ -116,7 +115,7 @@ export default function Payments() {
       });
       setNewModal(false);
       setNewForm({ student_id:"", amount:"", method:"cash", payment_date: new Date().toISOString().slice(0,10) });
-      setStuSearch(""); setStuPicked(null); setModalStudents([]);
+      setModalStudents([]);
       refetch();
     } catch(e) { alert(e.message); }
   }
@@ -220,38 +219,16 @@ export default function Payments() {
 
       {/* Modal 2: Yangi to'lov yaratish */}
       {perm.canCreate && (
-        <Modal open={newModal} onClose={()=>{ setNewModal(false); setStuSearch(""); setStuPicked(null); setModalStudents([]); }}>
+        <Modal open={newModal} onClose={()=>{ setNewModal(false); setModalStudents([]); }}>
           <div style={{ fontSize:14, fontWeight:500 }}>{p.form.title}</div>
           <FormField label="Talaba">
-            <div style={{ position:"relative" }}>
-              <input
-                value={stuPicked ? stuPicked.full_name : stuSearch}
-                onChange={e=>{ setStuSearch(e.target.value); setStuPicked(null); setNewForm(prev=>({...prev,student_id:""})); }}
-                placeholder={loadingModalStuds ? (isUz ? "Yuklanmoqda..." : "Loading...") : (isUz ? "Ism yoki telefon bilan qidiring..." : "Search by name or phone...")}
-                disabled={loadingModalStuds}
-                style={{ border:"0.5px solid var(--color-border-secondary)", borderRadius:8, padding:"7px 10px", fontSize:12, width:"100%", fontFamily:"var(--font-sans)", outline:"none", background:"var(--color-background-primary)", color:"var(--color-text-primary)", boxSizing:"border-box", opacity: loadingModalStuds ? 0.6 : 1 }}/>
-              {stuSearch && !stuPicked && !loadingModalStuds && (() => {
-                const q = stuSearch.toLowerCase();
-                const filtered = modalStudents.filter(s =>
-                  s.full_name?.toLowerCase().includes(q) || s.phone?.includes(stuSearch)
-                ).slice(0, 8);
-                return filtered.length > 0 ? (
-                  <div style={{ position:"absolute", top:"100%", left:0, right:0, background:"var(--color-background-primary)", border:"0.5px solid var(--color-border-secondary)", borderRadius:8, zIndex:50, boxShadow:"0 4px 16px rgba(0,0,0,.1)", maxHeight:200, overflowY:"auto", marginTop:2 }}>
-                    {filtered.map(s => (
-                      <div key={s.id}
-                        onClick={()=>{ setStuPicked(s); setStuSearch(""); setNewForm(prev=>({...prev,student_id:s.id})); }}
-                        style={{ padding:"8px 12px", cursor:"pointer", fontSize:12, borderBottom:"0.5px solid var(--color-border-tertiary)" }}
-                        onMouseEnter={e=>e.currentTarget.style.background="var(--color-background-secondary)"}
-                        onMouseLeave={e=>e.currentTarget.style.background=""}>
-                        <span style={{ fontWeight:500 }}>{s.full_name}</span>
-                        <span style={{ color:"var(--color-text-secondary)", marginLeft:8, fontSize:11 }}>{s.phone}</span>
-                      </div>
-                    ))}
-                  </div>
-                ) : null;
-              })()}
-            </div>
-            {stuPicked && <div style={{ fontSize:11, color:"#1D9E75", marginTop:4 }}>✓ Tanlandi: {stuPicked.full_name} (ID: {stuPicked.id})</div>}
+            <StudentSearch
+              students={modalStudents}
+              value={newForm.student_id}
+              onChange={id => setNewForm(prev => ({...prev, student_id: id}))}
+              loading={loadingModalStuds}
+              placeholder={isUz ? "Ism yoki telefon..." : "Name or phone..."}
+            />
           </FormField>
           <FormField label="Summa (so'm)">
             <input

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import StudentSearch from "../../components/StudentSearch";
 import { useLang } from "../../i18n/LangContext";
 import { usePermissions } from "../../auth/permissions";
 import { useAuth } from "../../auth/AuthContext";
@@ -490,21 +491,18 @@ export default function Groups() {
         <div style={{ fontSize:14, fontWeight:500 }}>Guruhga talaba qo'shish</div>
         <div style={{ fontSize:12, color:"var(--color-text-secondary)" }}>{selected?.name}</div>
         <FormField label="TALABANI TANLANG">
-          {loadingStudents ? (
-            <div style={{ fontSize:12, color:"var(--color-text-secondary)", padding:"8px 0" }}>
-              {isUz ? "Yuklanmoqda..." : "Loading..."}
-            </div>
-          ) : availableStudents.length === 0 ? (
+          {!loadingStudents && availableStudents.length === 0 ? (
             <div style={{ padding:"10px 12px", background:"var(--color-background-secondary)", borderRadius:8, fontSize:12, color:"var(--color-text-secondary)" }}>
               {isUz ? "Barcha talabalar allaqachon biror guruhda" : "All students are already enrolled in a group"}
             </div>
           ) : (
-            <Select value={addStuId} onChange={setAddStuId}>
-              <option value="">{isUz ? "Talabani tanlang..." : "Select student..."}</option>
-              {availableStudents.map(s => (
-                <option key={s.id} value={s.id}>{s.full_name} — {s.phone}</option>
-              ))}
-            </Select>
+            <StudentSearch
+              students={availableStudents}
+              value={addStuId}
+              onChange={setAddStuId}
+              loading={loadingStudents}
+              placeholder={isUz ? "Ism yoki telefon..." : "Name or phone..."}
+            />
           )}
         </FormField>
         <ModalButtons>
