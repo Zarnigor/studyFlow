@@ -32,6 +32,7 @@ export default function Students() {
   const [page,     setPage]     = useState(1);
   const [modal,    setModal]    = useState(false);
   const [selectedStudentId, setSelectedStudentId] = useState(null);
+  const [reloadTick, setReloadTick] = useState(0);
   const [view,     setView]     = useState("table");
   const [form,     setForm]     = useState({ firstName:"", lastName:"", phone:"", parentPhone:"", group:"" });
 
@@ -47,39 +48,58 @@ export default function Students() {
 
   const { mutate: createStudent, loading: saving } = useMutation(api.students.create);
 
-  useEffect(() => { loadStudents(); }, [filter, query, page, branchId, isSuperAdmin]);
+  useEffect(() => {
+    let cancelled = false;
 
-  async function loadStudents() {
-    setLoading(true);
-    try {
-      const params = { page, limit: 20 };
-      if (!isSuperAdmin && branchId) params.branch_id = branchId;
-      if (filter !== "all") params.status = filter;
-      if (query) params.q = query;
+    async function load() {
+      console.log("[Students] load — page:", page, "filter:", filter, "branchId:", branchId, "isSuperAdmin:", isSuperAdmin);
+      setLoading(true);
+      try {
+        const params = { page, limit: 20 };
+        if (!isSuperAdmin && branchId) params.branch_id = branchId;
+        if (filter !== "all") params.status = filter;
+        if (query) params.q = query;
 
-      const [studRes, groupRes] = await Promise.all([
-        api.students.list(params),
-        api.groups.list(isSuperAdmin ? {} : { branch_id: branchId }),
-      ]);
+        console.log("[Students] fetching with params:", params);
+        const studRes = await api.students.list(params);
+        if (cancelled) return;
 
-      const studs = studRes?.data ?? [];
-      const allGroups = Array.isArray(groupRes) ? groupRes : groupRes?.data ?? [];
+        const studs = studRes?.data ?? [];
+        console.log("[Students] got", studs.length, "students (total:", studRes?.meta?.total, ")");
 
-      // Build map: student_id → group name
-      const groupMap = {};
-      allGroups.forEach(g => {
-        (g.student_groups ?? []).forEach(sg => {
-          if (sg.is_active) groupMap[sg.student_id] = g.name;
-        });
-      });
+        // Groups fetch is best-effort — never let it kill the student list
+        let groupMap = {};
+        try {
+          const groupRes = await api.groups.list(isSuperAdmin ? {} : { branch_id: branchId });
+          if (!cancelled) {
+            const allGroups = Array.isArray(groupRes) ? groupRes : groupRes?.data ?? [];
+            allGroups.forEach(g => {
+              (g.student_groups ?? []).forEach(sg => {
+                if (sg.is_active) groupMap[sg.student_id] = g.name;
+              });
+            });
+          }
+        } catch(e) {
+          console.warn("[Students] groups fetch failed (non-critical):", e.message);
+        }
 
-      setStudents(studs.map(s => ({ ...s, group_name: groupMap[s.id] ?? "—" })));
-      setMeta(studRes?.meta ?? {});
-    } catch(e) {
-      console.error("Students load error:", e);
-    } finally {
-      setLoading(false);
+        if (cancelled) return;
+        setStudents(studs.map(s => ({ ...s, group_name: groupMap[s.id] ?? "—" })));
+        setMeta(studRes?.meta ?? {});
+        console.log("[Students] state updated with", studs.length, "students");
+      } catch(e) {
+        console.error("[Students] LOAD FAILED:", e.message, e.stack);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
     }
+
+    load();
+    return () => { cancelled = true; };
+  }, [filter, query, page, branchId, isSuperAdmin, reloadTick]);
+
+  function loadStudents() {
+    setReloadTick(t => t + 1);
   }
 
   const newCount = students.filter(st => st.status === "new").length;
